@@ -1,0 +1,1372 @@
+# Xbox Web API Endpoint and Model Compendium
+
+This document summarizes every HTTP endpoint wrapper and Pydantic data model defined in the project. The structure is optimized for human scanning while keeping request/response details easy to parse programmatically.
+
+## Endpoint catalog
+Each provider maps to one Xbox service domain. Methods list HTTP verb, route template, notable headers, inputs, and the response model returned by the wrapper.
+
+### Authentication
+- `generate_authorization_url` – creates a browser URL for `https://login.live.com/oauth20_authorize.srf` with client, redirect, scope, and optional state parameters. Uses no HTTP call itself; included for completeness.
+- `request_oauth_token` – `POST https://login.live.com/oauth20_token.srf` with authorization code; returns `OAuth2TokenResponse`.
+- `refresh_oauth_token` – `POST https://login.live.com/oauth20_token.srf` with refresh token; returns `OAuth2TokenResponse`.
+- `request_user_token` – `POST https://user.auth.xboxlive.com/user/authenticate` (contract v1) with RPS ticket; returns `XAUResponse`.
+- `request_xsts_token` – `POST https://xsts.auth.xboxlive.com/xsts/authorize` (contract v1) with user token; returns `XSTSResponse`.
+
+### Account
+- `claim_gamertag` – `POST https://user.mgt.xboxlive.com/gamertags/reserve` (contract v1) with gamertag and reservationId; returns `ClaimGamertagResult`.
+- `change_gamertag` – `POST https://accounts.xboxlive.com/users/current/profile/gamertag` (contract v2) with gamertag, preview flag, and reservationId; returns `ChangeGamertagResult`.
+
+### Achievements
+- `get_achievements_detail_item` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/achievements/{scid}/{achievement_id}` (contract v2); returns `AchievementResponse`.
+- `get_achievements_xbox360_all` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/titleachievements?titleId={title_id}` (contract v1); returns `Achievement360Response`.
+- `get_achievements_xbox360_earned` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/achievements?titleId={title_id}` (contract v1); returns `Achievement360Response`.
+- `get_achievements_xbox360_recent_progress_and_info` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/history/titles` (contract v1); returns `Achievement360ProgressResponse`.
+- `get_achievements_xboxone_gameprogress` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/achievements?titleId={title_id}` (contract v2); returns `AchievementResponse`.
+- `get_achievements_xboxone_recent_progress_and_info` – `GET https://achievements.xboxlive.com/users/xuid({xuid})/history/titles` (contract v2); returns `RecentProgressResponse`.
+
+### Catalog
+- `get_products` – `GET https://displaycatalog.mp.microsoft.com/v7.0/products` without auth using `bigIds`, `fieldsTemplate`, `languages`, and `market`; returns `CatalogResponse`.
+- `get_product_from_alternate_id` – `GET https://displaycatalog.mp.microsoft.com/v7.0/products/lookup` without auth using `alternateId`, `value`, `fieldsTemplate`, `languages`, `market`, `top`; returns `CatalogResponse`.
+- `product_search` – `GET https://displaycatalog.mp.microsoft.com/v7.0/productFamilies/autosuggest` without auth using `query`, `platformdependencyname`, `productFamilyNames`, `languages`, `market`, `topProducts`; returns `CatalogSearchResponse`.
+
+### CQS (TV data)
+- `get_channel_list` – `GET https://cqs.xboxlive.com/epg/{locale_info}/lineups/{headend_id}/channels` with `desired=vesper_mobile_lineup`; returns `CqsChannelListResponse`.
+- `get_schedule` – `GET https://cqs.xboxlive.com/epg/{locale_info}/lineups/{headend_id}/programs` with schedule window parameters and `desired=vesper_mobile_schedule`; returns `CqsScheduleResponse`.
+
+### Gameclips
+- `get_recent_community_clips_by_title_id` – `GET https://gameclipsmetadata.xboxlive.com/public/titles/{title_id}/clips` (`qualifier=created`); returns `GameclipsResponse`.
+- `get_recent_own_clips` – `GET https://gameclipsmetadata.xboxlive.com/users/me[/titles/{title_id}]/clips` with paging params; returns `GameclipsResponse`.
+- `get_recent_clips_by_xuid` – `GET https://gameclipsmetadata.xboxlive.com/users/xuid({xuid})[/titles/{title_id}]/clips` with paging params; returns `GameclipsResponse`.
+- `get_saved_community_clips_by_title_id` – `GET https://gameclipsmetadata.xboxlive.com/public/titles/{title_id}/clips/saved` (`qualifier=created`); returns `GameclipsResponse`.
+- `get_saved_own_clips` – `GET https://gameclipsmetadata.xboxlive.com/users/me[/titles/{title_id}]/clips/saved` with paging params; returns `GameclipsResponse`.
+- `get_saved_clips_by_xuid` – `GET https://gameclipsmetadata.xboxlive.com/users/xuid({xuid})[/titles/{title_id}]/clips/saved` with paging params; returns `GameclipsResponse`.
+
+### Lists (Pins)
+- `remove_items` – `DELETE https://eplists.xboxlive.com/users/xuid({xuid})/lists/PINS/{listname}` with JSON body; returns `ListMetadata`.
+- `get_items` – `GET https://eplists.xboxlive.com/users/xuid({xuid})/lists/PINS/{listname}`; returns `ListsResponse`.
+- `insert_items` – `POST https://eplists.xboxlive.com/users/xuid({xuid})/lists/PINS/{listname}` with JSON body; returns `ListMetadata`.
+
+### Mediahub (search by owner)
+- `fetch_own_clips` – `POST https://mediahub.xboxlive.com/gameclips/search` (contract v3) with owner query and paging; returns `MediahubGameclips`.
+- `fetch_own_screenshots` – `POST https://mediahub.xboxlive.com/screenshots/search` (contract v3) with owner query and paging; returns `MediahubScreenshots`.
+
+### Messaging
+- `get_inbox` – `GET https://xblmessaging.xboxlive.com/network/Xbox/users/me/inbox` (`maxItems`); returns `InboxResponse`.
+- `get_conversation` – `GET https://xblmessaging.xboxlive.com/network/Xbox/users/me/conversations/users/xuid({xuid})` (`maxItems`); returns `ConversationResponse`.
+- `delete_conversation` – `PUT https://xblmessaging.xboxlive.com/network/Xbox/users/me/conversations/horizon` (contract v2) with horizon payload; returns boolean success.
+- `delete_message` – `DELETE https://xblmessaging.xboxlive.com/network/Xbox/users/me/conversations/{conversation_id}/messages/{message_id}`; returns boolean success.
+- `send_message` – `POST https://xblmessaging.xboxlive.com/network/Xbox/users/me/conversations/users/xuid({xuid})` with text parts; returns `SendMessageResponse`.
+
+### People
+- `get_friends_own` – `GET https://peoplehub.xboxlive.com/users/me/people/social/decoration/{decorations}`; returns `PeopleResponse`.
+- `get_friends_by_xuid` – `GET https://peoplehub.xboxlive.com/users/xuid({xuid})/people/social/decoration/{decorations}`; returns `PeopleResponse`.
+- `get_friends_own_batch` – `POST https://peoplehub.xboxlive.com/users/me/people/batch/decoration/{decorations}` with `xuids`; returns `PeopleResponse`.
+- `get_friend_recommendations` – `GET https://peoplehub.xboxlive.com/users/me/people/recommendations`; returns `PeopleResponse`.
+- `get_friends_summary_own` – `GET https://social.xboxlive.com/users/me/summary` (rate limited); returns `PeopleSummaryResponse`.
+- `get_friends_summary_by_xuid` – `GET https://social.xboxlive.com/users/xuid({xuid})/summary` (rate limited); returns `PeopleSummaryResponse`.
+- `get_friends_summary_by_gamertag` – `GET https://social.xboxlive.com/users/gt({gamertag})/summary` (rate limited); returns `PeopleSummaryResponse`.
+
+### Presence
+- `get_presence` – `GET https://userpresence.xboxlive.com/users/xuid({xuid})?level={level}` (contract v3); returns `PresenceItem`.
+- `get_presence_batch` – `POST https://userpresence.xboxlive.com/users/batch` with users, `onlineOnly`, and `level`; returns list of `PresenceItem`.
+- `get_presence_own` – `GET https://userpresence.xboxlive.com/users/me?level={level}`; returns `PresenceItem`.
+- `set_presence_own` – `PUT https://userpresence.xboxlive.com/users/xuid({current_xuid})/state` with `state`; returns boolean success.
+
+### Profile
+- `get_profiles` – `POST https://profile.xboxlive.com/users/batch/profile/settings` (contract v3) with `settings` and `userIds`; returns `ProfileResponse`.
+- `get_profile_by_xuid` – `GET https://profile.xboxlive.com/users/xuid({target_xuid})/profile/settings` with requested settings; returns `ProfileResponse`.
+- `get_profile_by_gamertag` – `GET https://profile.xboxlive.com/users/gt({gamertag})/profile/settings` with requested settings; returns `ProfileResponse`.
+
+### Screenshots
+- `get_recent_community_screenshots_by_title_id` – `GET https://screenshotsmetadata.xboxlive.com/public/titles/{title_id}/screenshots` (`qualifier=created`); returns `ScreenshotResponse`.
+- `get_recent_own_screenshots` – `GET https://screenshotsmetadata.xboxlive.com/users/me[/titles/{title_id}]/screenshots` with paging; returns `ScreenshotResponse`.
+- `get_recent_screenshots_by_xuid` – `GET https://screenshotsmetadata.xboxlive.com/users/xuid({xuid})[/titles/{title_id}]/screenshots` with paging; returns `ScreenshotResponse`.
+- `get_saved_community_screenshots_by_title_id` – `GET https://screenshotsmetadata.xboxlive.com/public/titles/{title_id}/screenshots/saved` (`qualifier=created`); returns `ScreenshotResponse`.
+- `get_saved_own_screenshots` – `GET https://screenshotsmetadata.xboxlive.com/users/me[/titles/{title_id}]/screenshots/saved` with paging; returns `ScreenshotResponse`.
+- `get_saved_screenshots_by_xuid` – `GET https://screenshotsmetadata.xboxlive.com/users/xuid({xuid})[/titles/{title_id}]/screenshots/saved` with paging; returns `ScreenshotResponse`.
+
+### SmartGlass (console control)
+- `get_console_list` – `GET https://xccs.xboxlive.com/lists/devices` (contract v4) with storage toggle; returns `SmartglassConsoleList`.
+- `get_installed_apps` – `GET https://xccs.xboxlive.com/lists/installedApps` (contract v4) optionally scoped by `deviceId`; returns `InstalledPackagesList`.
+- `get_storage_devices` – `GET https://xccs.xboxlive.com/lists/storageDevices` (contract v4) with `deviceId`; returns `StorageDevicesList`.
+- `get_console_status` – `GET https://xccs.xboxlive.com/consoles/{device_id}` (contract v4); returns `SmartglassConsoleStatus`.
+- `get_op_status` – `GET https://xccs.xboxlive.com/opStatus` (contract v3) with `x-xbl-opId` and `x-xbl-deviceId`; returns `OperationStatusResponse`.
+- Command helpers use `POST https://xccs.xboxlive.com/commands` (contract v4) with a one-shot payload and return `CommandResponse`: `turn_off`, `reboot`, `mute`, `unmute`, `volume`, `play`, `pause`, `previous`, `next`, `go_home`, `go_back`, `show_guide_tab`, `press_button`, `insert_text`, `launch_app`, `show_tv_guide`.
+
+### Titlehub
+- `get_title_history` – `GET https://titlehub.xboxlive.com/users/xuid({xuid})/titles/titlehistory/decoration/{fields}` with `maxItems`; returns `TitleHubResponse`.
+- `get_title_info` – `GET https://titlehub.xboxlive.com/users/xuid({current_xuid})/titles/titleid({title_id})/decoration/{fields}`; returns `TitleHubResponse`.
+- `get_title_info_by_pfn` – `GET https://titlehub.xboxlive.com/users/xuid({current_xuid})/titles/pfn({pfn})/decoration/{fields}`; returns `TitleHubResponse`.
+- `get_titles_batch` – `POST https://titlehub.xboxlive.com/titles/batch/decoration/{fields}` with PFNs; returns `TitleHubResponse`.
+
+### User search
+- `get_live_search` – `GET https://usersearch.xboxlive.com/suggest?q={query}` (contract v1); returns `UserSearchResponse`.
+
+### User stats
+- `get_stats` – `GET https://userstats.xboxlive.com/users/xuid({xuid})/scids/{scid}/stats/{stats}` (contract v2, rate limited); returns `UserStatsResponse`.
+- `get_stats_with_metadata` – `GET https://userstats.xboxlive.com/users/xuid({xuid})/scids/{scid}/stats/{stats}?include=valuemetadata` (contract v3, rate limited); returns `UserStatsResponse`.
+- `get_stats_batch` – `POST https://userstats.xboxlive.com/batch` (contract v2, rate limited) with `titleId`; returns `UserStatsResponse`.
+- `get_stats_batch_by_scid` – `POST https://userstats.xboxlive.com/batch` (contract v2, rate limited) with `scid`; returns `UserStatsResponse`.
+
+## Data models
+The following tables enumerate every Pydantic model and enum defined in the repository. Field names follow the casing used in the code to simplify serialization.
+
+### xbox/webapi/api/provider/account/models.py
+- **ClaimGamertagResult** (Enum)
+  - No annotated attributes
+- **ChangeGamertagResult** (Enum)
+  - No annotated attributes
+
+### xbox/webapi/api/provider/achievements/models.py
+- **PagingInfo** (CamelCaseModel)
+  - `continuation_token`: Optional[str]
+  - `total_records`: int
+- **Achievement360** (CamelCaseModel)
+  - `id`: int
+  - `title_id`: int
+  - `name`: str
+  - `sequence`: int
+  - `flags`: int
+  - `unlocked_online`: bool
+  - `unlocked`: bool
+  - `is_secret`: bool
+  - `platform`: int
+  - `gamerscore`: int
+  - `image_id`: int
+  - `description`: str
+  - `locked_description`: str
+  - `type`: int
+  - `is_revoked`: bool
+  - `time_unlocked`: datetime
+- **Title360** (CamelCaseModel)
+  - `last_played`: datetime
+  - `current_achievements`: int
+  - `current_gamerscore`: int
+  - `sequence`: int
+  - `title_id`: int
+  - `title_type`: int
+  - `platforms`: List[int]
+  - `name`: str
+  - `total_achievements`: int
+  - `total_gamerscore`: int
+- **Achievement360Response** (CamelCaseModel)
+  - `achievements`: List[Achievement360]
+  - `paging_info`: PagingInfo
+  - `version`: datetime
+- **Achievement360ProgressResponse** (CamelCaseModel)
+  - `titles`: List[Title360]
+  - `paging_info`: PagingInfo
+  - `version`: datetime
+- **TitleAssociation** (BaseModel)
+  - `name`: str
+  - `id`: int
+- **Requirement** (CamelCaseModel)
+  - `id`: str
+  - `current`: Optional[str]
+  - `target`: str
+  - `operation_type`: str
+  - `value_type`: str
+  - `rule_participation_type`: str
+- **Progression** (CamelCaseModel)
+  - `requirements`: List[Requirement]
+  - `time_unlocked`: datetime
+- **MediaAsset** (BaseModel)
+  - `name`: str
+  - `type`: str
+  - `url`: str
+- **Reward** (CamelCaseModel)
+  - `name`: Any
+  - `description`: Any
+  - `value`: str
+  - `type`: str
+  - `media_asset`: Any
+  - `value_type`: str
+- **Achievement** (CamelCaseModel)
+  - `id`: str
+  - `service_config_id`: str
+  - `name`: str
+  - `title_associations`: List[TitleAssociation]
+  - `progress_state`: str
+  - `progression`: Progression
+  - `media_assets`: List[MediaAsset]
+  - `platforms`: List[str]
+  - `is_secret`: bool
+  - `description`: str
+  - `locked_description`: str
+  - `product_id`: str
+  - `achievement_type`: str
+  - `participation_type`: str
+  - `time_window`: Any
+  - `rewards`: List[Reward]
+  - `estimated_time`: time
+  - `deeplink`: Any
+  - `is_revoked`: bool
+- **AchievementResponse** (CamelCaseModel)
+  - `achievements`: List[Achievement]
+  - `paging_info`: PagingInfo
+- **Title** (CamelCaseModel)
+  - `last_unlock`: datetime
+  - `title_id`: int
+  - `service_config_id`: str
+  - `title_type`: str
+  - `platform`: str
+  - `name`: str
+  - `earned_achievements`: int
+  - `current_gamerscore`: int
+  - `max_gamerscore`: int
+- **RecentProgressResponse** (CamelCaseModel)
+  - `titles`: List[Title]
+  - `paging_info`: PagingInfo
+
+### xbox/webapi/api/provider/catalog/models.py
+- **AlternateIdType** (str, Enum)
+  - No annotated attributes
+- **FieldsTemplate** (str, Enum)
+  - No annotated attributes
+- **PlatformType** (str, Enum)
+  - No annotated attributes
+- **Image** (PascalCaseModel)
+  - `file_id`: Optional[str]
+  - `eis_listing_identifier`: Any
+  - `background_color`: Optional[str]
+  - `caption`: Optional[str]
+  - `file_size_in_bytes`: int
+  - `foreground_color`: Optional[str]
+  - `height`: int
+  - `image_position_info`: Optional[str]
+  - `image_purpose`: str
+  - `unscaled_image_sha256_hash`: Optional[str]
+  - `uri`: str
+  - `width`: int
+- **Video** (PascalCaseModel)
+  - `uri`: str
+  - `video_purpose`: str
+  - `height`: int
+  - `width`: int
+  - `audio_encoding`: str
+  - `video_encoding`: str
+  - `video_position_info`: str
+  - `caption`: str
+  - `file_size_in_bytes`: int
+  - `preview_image`: Image
+  - `sort_order`: int
+- **SearchTitle** (PascalCaseModel)
+  - `search_title_string`: str
+  - `search_title_type`: str
+- **ContentRating** (PascalCaseModel)
+  - `rating_system`: str
+  - `rating_id`: str
+  - `rating_descriptors`: List[str]
+  - `rating_disclaimers`: List
+  - `interactive_elements`: Optional[List]
+- **UsageData** (PascalCaseModel)
+  - `aggregate_time_span`: str
+  - `average_rating`: float
+  - `play_count`: Optional[int]
+  - `rating_count`: int
+  - `rental_count`: Optional[str]
+  - `trial_count`: Optional[str]
+  - `purchase_count`: Optional[str]
+- **ProductProperties** (PascalCaseModel)
+  - `attributes`: Optional[List]
+  - `can_install_to_sd_card`: Optional[bool]
+  - `category`: Optional[str]
+  - `sub_category`: Optional[str]
+  - `categories`: Optional[List[str]]
+  - `extensions`: Any
+  - `is_accessible`: Optional[bool]
+  - `is_line_of_business_app`: Optional[bool]
+  - `is_published_to_legacy_windows_phone_store`: Optional[bool]
+  - `is_published_to_legacy_windows_store`: Optional[bool]
+  - `is_settings_app`: Optional[bool]
+  - `package_family_name`: Optional[str]
+  - `package_identity_name`: Optional[str]
+  - `publisher_certificate_name`: Optional[str]
+  - `publisher_id`: str
+  - `xbox_live_tier`: Any
+  - `xbox_xpa`: Any
+  - `xbox_cross_gen_set_id`: Any
+  - `xbox_console_gen_optimized`: Any
+  - `xbox_console_gen_compatible`: Any
+  - `xbox_live_gold_required`: Optional[bool]
+  - `ownership_type`: Any
+  - `pdp_background_color`: Optional[str]
+  - `has_add_ons`: Optional[bool]
+  - `revision_id`: str
+  - `product_group_id`: Optional[str]
+  - `product_group_name`: Optional[str]
+- **AlternateId** (PascalCaseModel)
+  - `id_type`: str
+  - `value`: str
+- **ValidationData** (PascalCaseModel)
+  - `passed_validation`: bool
+  - `revision_id`: str
+  - `validation_result_uri`: Optional[str]
+- **FulfillmentData** (PascalCaseModel)
+  - `product_id`: str
+  - `wu_bundle_id`: Optional[str]
+  - `wu_category_id`: str
+  - `package_family_name`: str
+  - `sku_id`: str
+  - `content`: Any
+  - `package_features`: Any
+- **HardwareProperties** (PascalCaseModel)
+  - `minimum_hardware`: List
+  - `recommended_hardware`: List
+  - `minimum_processor`: Any
+  - `recommended_processor`: Any
+  - `minimum_graphics`: Any
+  - `recommended_graphics`: Any
+- **Application** (PascalCaseModel)
+  - `application_id`: str
+  - `declaration_order`: int
+  - `extensions`: List[str]
+- **FrameworkDependency** (PascalCaseModel)
+  - `max_tested`: int
+  - `min_version`: int
+  - `package_identity`: str
+- **PlatformDependency** (PascalCaseModel)
+  - `max_tested`: Optional[int]
+  - `min_version`: Optional[int]
+  - `platform_name`: str
+- **Package** (PascalCaseModel)
+  - `applications`: Optional[List[Application]]
+  - `architectures`: List[str]
+  - `capabilities`: Optional[List[str]]
+  - `device_capabilities`: Optional[List[str]]
+  - `experience_ids`: Optional[List]
+  - `framework_dependencies`: Optional[List[FrameworkDependency]]
+  - `hardware_dependencies`: Optional[List]
+  - `hardware_requirements`: Optional[List]
+  - `hash`: Optional[str]
+  - `hash_algorithm`: Optional[str]
+  - `is_streaming_app`: Optional[bool]
+  - `languages`: Optional[List[str]]
+  - `max_download_size_in_bytes`: int
+  - `max_install_size_in_bytes`: Optional[int]
+  - `package_format`: str
+  - `package_family_name`: Optional[str]
+  - `main_package_family_name_for_dlc`: Any
+  - `package_full_name`: Optional[str]
+  - `package_id`: str
+  - `content_id`: str
+  - `key_id`: Optional[str]
+  - `package_rank`: Optional[int]
+  - `package_uri`: Optional[str]
+  - `platform_dependencies`: Optional[List[PlatformDependency]]
+  - `platform_dependency_xml_blob`: Optional[str]
+  - `resource_id`: Optional[str]
+  - `version`: Optional[str]
+  - `package_download_uris`: Any
+  - `driver_dependencies`: Optional[List]
+  - `fulfillment_data`: Optional[FulfillmentData]
+- **LegalText** (PascalCaseModel)
+  - `additional_license_terms`: str
+  - `copyright`: str
+  - `copyright_uri`: str
+  - `privacy_policy`: str
+  - `privacy_policy_uri`: str
+  - `tou`: str
+  - `tou_uri`: str
+- **SkuLocalizedProperty** (PascalCaseModel)
+  - `contributors`: Optional[List]
+  - `features`: Optional[List]
+  - `minimum_notes`: Optional[str]
+  - `recommended_notes`: Optional[str]
+  - `release_notes`: Optional[str]
+  - `display_platform_properties`: Any
+  - `sku_description`: str
+  - `sku_title`: str
+  - `sku_button_title`: Optional[str]
+  - `delivery_date_overlay`: Any
+  - `sku_display_rank`: Optional[List]
+  - `text_resources`: Any
+  - `images`: Optional[List]
+  - `legal_text`: Optional[LegalText]
+  - `language`: str
+  - `markets`: List[str]
+- **SkuMarketProperty** (PascalCaseModel)
+  - `first_available_date`: Optional[Union[datetime, str]]
+  - `supported_languages`: Optional[List[str]]
+  - `package_ids`: Any
+  - `pi_filter`: Any
+  - `markets`: List[str]
+- **SkuProperties** (PascalCaseModel)
+  - `early_adopter_enrollment_url`: Any
+  - `fulfillment_data`: Optional[FulfillmentData]
+  - `fulfillment_type`: Optional[str]
+  - `fulfillment_plugin_id`: Any
+  - `has_third_party_iaps`: Optional[bool]
+  - `last_update_date`: Optional[datetime]
+  - `hardware_properties`: Optional[HardwareProperties]
+  - `hardware_requirements`: Optional[List]
+  - `hardware_warning_list`: Optional[List]
+  - `installation_terms`: str
+  - `packages`: Optional[List[Package]]
+  - `version_string`: Optional[str]
+  - `visible_to_b2b_service_ids`: List
+  - `xbox_xpa`: Optional[bool]
+  - `bundled_skus`: Optional[List]
+  - `is_repurchasable`: bool
+  - `sku_display_rank`: int
+  - `display_physical_store_inventory`: Any
+  - `additional_identifiers`: List
+  - `is_trial`: bool
+  - `is_pre_order`: bool
+  - `is_bundle`: bool
+- **Sku** (PascalCaseModel)
+  - `last_modified_date`: datetime
+  - `localized_properties`: List[SkuLocalizedProperty]
+  - `market_properties`: List[SkuMarketProperty]
+  - `product_id`: str
+  - `properties`: SkuProperties
+  - `sku_a_schema`: str
+  - `sku_b_schema`: str
+  - `sku_id`: str
+  - `sku_type`: str
+  - `recurrence_policy`: Any
+  - `subscription_policy_id`: Any
+- **AllowedPlatform** (PascalCaseModel)
+  - `max_version`: Optional[int]
+  - `min_version`: Optional[int]
+  - `platform_name`: str
+- **ClientConditions** (PascalCaseModel)
+  - `allowed_platforms`: List[AllowedPlatform]
+- **Conditions** (PascalCaseModel)
+  - `client_conditions`: ClientConditions
+  - `end_date`: datetime
+  - `resource_set_ids`: List[str]
+  - `start_date`: datetime
+- **PIFilter** (PascalCaseModel)
+  - `exclusion_properties`: List
+  - `inclusion_properties`: List
+- **Price** (PascalCaseModel)
+  - `currency_code`: str
+  - `is_pi_required`: bool
+  - `list_price`: float
+  - `msrp`: float
+  - `tax_type`: str
+  - `wholesale_currency_code`: str
+- **OrderManagementData** (PascalCaseModel)
+  - `granted_entitlement_keys`: Optional[List]
+  - `pi_filter`: Optional[PIFilter]
+  - `price`: Price
+- **AvailabilityProperties** (PascalCaseModel)
+  - `original_release_date`: Optional[datetime]
+- **SatisfyingEntitlementKey** (PascalCaseModel)
+  - `entitlement_keys`: List[str]
+  - `licensing_key_ids`: List[str]
+- **LicensingData** (PascalCaseModel)
+  - `satisfying_entitlement_keys`: List[SatisfyingEntitlementKey]
+- **Availability** (PascalCaseModel)
+  - `actions`: List[str]
+  - `availability_a_schema`: Optional[str]
+  - `availability_b_schema`: Optional[str]
+  - `availability_id`: Optional[str]
+  - `conditions`: Optional[Conditions]
+  - `last_modified_date`: Optional[datetime]
+  - `markets`: Optional[List[str]]
+  - `order_management_data`: Optional[OrderManagementData]
+  - `properties`: Optional[AvailabilityProperties]
+  - `sku_id`: Optional[str]
+  - `display_rank`: Optional[int]
+  - `remediation_required`: Optional[bool]
+  - `licensing_data`: Optional[LicensingData]
+- **DisplaySkuAvailability** (PascalCaseModel)
+  - `sku`: Optional[Sku]
+  - `availabilities`: List[Availability]
+- **LocalizedProperty** (PascalCaseModel)
+  - `developer_name`: Optional[str]
+  - `display_platform_properties`: Optional[Any]
+  - `publisher_name`: Optional[str]
+  - `publisher_website_uri`: Optional[str]
+  - `support_uri`: Optional[str]
+  - `eligibility_properties`: Optional[Any]
+  - `franchises`: Optional[List]
+  - `images`: List[Image]
+  - `videos`: Optional[List[Video]]
+  - `product_description`: Optional[str]
+  - `product_title`: str
+  - `short_title`: Optional[str]
+  - `sort_title`: Optional[str]
+  - `friendly_title`: Optional[str]
+  - `short_description`: Optional[str]
+  - `search_titles`: Optional[List[SearchTitle]]
+  - `voice_title`: Optional[str]
+  - `render_group_details`: Optional[Any]
+  - `product_display_ranks`: Optional[List]
+  - `interactive_model_config`: Optional[Any]
+  - `interactive_3d_enabled`: Optional[bool]
+  - `language`: Optional[str]
+  - `markets`: Optional[List[str]]
+- **MarketProperty** (PascalCaseModel)
+  - `original_release_date`: Optional[datetime]
+  - `original_release_friendly_name`: Optional[str]
+  - `minimum_user_age`: Optional[int]
+  - `content_ratings`: Optional[List[ContentRating]]
+  - `related_products`: Optional[List]
+  - `usage_data`: List[UsageData]
+  - `bundle_config`: Optional[Any]
+  - `markets`: Optional[List[str]]
+- **Product** (PascalCaseModel)
+  - `last_modified_date`: Optional[datetime]
+  - `localized_properties`: List[LocalizedProperty]
+  - `market_properties`: List[MarketProperty]
+  - `product_a_schema`: Optional[str]
+  - `product_b_schema`: Optional[str]
+  - `product_id`: str
+  - `properties`: Optional[ProductProperties]
+  - `alternate_ids`: Optional[List[AlternateId]]
+  - `domain_data_version`: Optional[Any]
+  - `ingestion_source`: Optional[str]
+  - `is_microsoft_product`: Optional[bool]
+  - `preferred_sku_id`: Optional[str]
+  - `product_type`: Optional[str]
+  - `validation_data`: Optional[ValidationData]
+  - `merchandizing_tags`: Optional[List]
+  - `part_d`: Optional[str]
+  - `product_family`: str
+  - `schema_version`: Optional[str]
+  - `product_kind`: str
+  - `display_sku_availabilities`: List[DisplaySkuAvailability]
+- **CatalogResponse** (PascalCaseModel)
+  - `big_ids`: Optional[List[str]]
+  - `has_more_pages`: Optional[bool]
+  - `products`: List[Product]
+  - `total_result_count`: Optional[int]
+- **SearchProduct** (PascalCaseModel)
+  - `background_color`: Optional[str]
+  - `height`: Optional[int]
+  - `image_type`: Optional[str]
+  - `width`: Optional[int]
+  - `platform_properties`: List
+  - `icon`: Optional[str]
+  - `product_id`: str
+  - `type`: str
+  - `title`: str
+- **CatalogSearchResult** (PascalCaseModel)
+  - `product_family_name`: str
+  - `products`: List[SearchProduct]
+- **CatalogSearchResponse** (PascalCaseModel)
+  - `results`: List[CatalogSearchResult]
+  - `total_result_count`: int
+
+### xbox/webapi/api/provider/cqs/models.py
+- **Image** (PascalCaseModel)
+  - `purpose`: str
+  - `resize_uri`: str
+  - `fore_color`: str
+- **ListChannel** (PascalCaseModel)
+  - `id`: str
+  - `channel_id`: str
+  - `call_sign`: str
+  - `channel_number`: str
+  - `start_date`: str
+  - `end_date`: str
+  - `images`: List[Image]
+  - `is_HD`: Optional[bool]
+- **CqsChannelListResponse** (PascalCaseModel)
+  - `channels`: List[ListChannel]
+- **Genre** (PascalCaseModel)
+  - `name`: str
+- **ParentSeries** (PascalCaseModel)
+  - `id`: str
+  - `name`: str
+- **Program** (PascalCaseModel)
+  - `id`: str
+  - `media_item_type`: str
+  - `start_date`: str
+  - `end_date`: str
+  - `name`: str
+  - `is_repeat`: bool
+  - `parental_control`: Optional[Dict[str, Any]]
+  - `genres`: List[Genre]
+  - `category_id`: int
+  - `description`: Optional[str]
+  - `parent_series`: Optional[ParentSeries]
+  - `images`: Optional[List[Image]]
+- **ScheduleChannel** (PascalCaseModel)
+  - `id`: str
+  - `name`: str
+  - `images`: List[Image]
+  - `programs`: List[Program]
+- **CqsScheduleResponse** (PascalCaseModel)
+  - `channels`: List[ScheduleChannel]
+
+### xbox/webapi/api/provider/gameclips/models.py
+- **Thumbnail** (CamelCaseModel)
+  - `uri`: str
+  - `file_size`: int
+  - `thumbnail_type`: str
+- **GameClipUri** (CamelCaseModel)
+  - `uri`: str
+  - `file_size`: int
+  - `uri_type`: str
+  - `expiration`: str
+- **GameClip** (CamelCaseModel)
+  - `game_clip_id`: str
+  - `state`: str
+  - `date_published`: str
+  - `date_recorded`: str
+  - `last_modified`: str
+  - `user_caption`: str
+  - `type`: str
+  - `duration_in_seconds`: int
+  - `scid`: str
+  - `title_id`: int
+  - `rating`: float
+  - `rating_count`: int
+  - `views`: int
+  - `title_data`: str
+  - `system_properties`: str
+  - `saved_by_user`: bool
+  - `achievement_id`: str
+  - `greatest_moment_id`: str
+  - `thumbnails`: List[Thumbnail]
+  - `game_clip_uris`: List[GameClipUri]
+  - `xuid`: str
+  - `clip_name`: str
+  - `title_name`: str
+  - `game_clip_locale`: str
+  - `clip_content_attributes`: str
+  - `device_type`: str
+  - `comment_count`: int
+  - `like_count`: int
+  - `share_count`: int
+  - `partial_views`: int
+- **PagingInfo** (CamelCaseModel)
+  - `continuation_token`: Optional[str]
+- **GameclipsResponse** (CamelCaseModel)
+  - `game_clips`: List[GameClip]
+  - `paging_info`: PagingInfo
+
+### xbox/webapi/api/provider/lists/models.py
+- **Item** (PascalCaseModel)
+  - `item_id`: str
+  - `content_type`: str
+  - `title`: Optional[str]
+  - `device_type`: str
+  - `provider`: Optional[str]
+  - `provider_id`: Optional[str]
+- **ListItem** (PascalCaseModel)
+  - `date_added`: str
+  - `date_modified`: str
+  - `index`: int
+  - `k_value`: int
+  - `item`: Item
+- **ListMetadata** (PascalCaseModel)
+  - `list_title`: str
+  - `list_version`: int
+  - `list_count`: int
+  - `allow_duplicates`: bool
+  - `max_list_size`: int
+  - `access_setting`: str
+- **ListsResponse** (PascalCaseModel)
+  - `impression_id`: str
+  - `list_items`: List[ListItem]
+  - `list_metadata`: ListMetadata
+
+### xbox/webapi/api/provider/mediahub/models.py
+- **ContentSegment** (CamelCaseModel)
+  - `segment_id`: int
+  - `creation_type`: str
+  - `creator_channel_id`: Optional[str]
+  - `creator_xuid`: int
+  - `record_date`: str
+  - `duration_in_seconds`: int
+  - `offset`: int
+  - `secondary_title_id`: Optional[int]
+  - `title_id`: int
+- **ContentLocator** (CamelCaseModel)
+  - `expiration`: Optional[str]
+  - `file_size`: Optional[int]
+  - `locator_type`: str
+  - `uri`: str
+- **GameclipContent** (CamelCaseModel)
+  - `content_id`: str
+  - `content_locators`: List[ContentLocator]
+  - `content_segments`: List[ContentSegment]
+  - `creation_type`: str
+  - `duration_in_seconds`: int
+  - `local_id`: str
+  - `owner_xuid`: int
+  - `sandbox_id`: str
+  - `shared_to`: List[int]
+  - `title_id`: int
+  - `title_name`: str
+  - `upload_date`: str
+  - `upload_language`: str
+  - `upload_region`: str
+  - `upload_title_id`: int
+  - `upload_device_type`: str
+  - `comment_count`: int
+  - `like_count`: int
+  - `share_count`: int
+  - `view_count`: int
+  - `content_state`: str
+  - `enforcement_state`: str
+  - `sessions`: List[str]
+  - `tournaments`: List[str]
+- **MediahubGameclips** (CamelCaseModel)
+  - `values`: List[GameclipContent]
+- **ScreenshotContent** (CamelCaseModel)
+  - `content_id`: str
+  - `capture_date`: str
+  - `content_locators`: List[ContentLocator]
+  - `local_id`: str
+  - `owner_xuid`: int
+  - `resolution_height`: int
+  - `resolution_width`: int
+  - `date_uploaded`: str
+  - `sandbox_id`: str
+  - `shared_to`: List[int]
+  - `title_id`: int
+  - `title_name`: str
+  - `upload_language`: str
+  - `upload_region`: str
+  - `upload_title_id`: int
+  - `upload_device_type`: str
+  - `comment_count`: int
+  - `like_count`: int
+  - `share_count`: int
+  - `view_count`: int
+  - `content_state`: str
+  - `enforcement_state`: str
+  - `sessions`: List[str]
+  - `tournaments`: List[str]
+- **MediahubScreenshots** (CamelCaseModel)
+  - `values`: List[ScreenshotContent]
+
+### xbox/webapi/api/provider/message/models.py
+- **Part** (CamelCaseModel)
+  - `content_type`: str
+  - `version`: int
+  - `text`: Optional[str]
+  - `unsuitable_for`: Optional[List]
+  - `locator`: Optional[str]
+- **Content** (CamelCaseModel)
+  - `parts`: List[Part]
+- **ContentPayload** (CamelCaseModel)
+  - `content`: Content
+- **Message** (CamelCaseModel)
+  - `content_payload`: Optional[ContentPayload]
+  - `timestamp`: datetime
+  - `last_update_timestamp`: datetime
+  - `type`: str
+  - `network_id`: str
+  - `conversation_type`: str
+  - `conversation_id`: str
+  - `owner`: Optional[int]
+  - `sender`: str
+  - `message_id`: str
+  - `is_deleted`: bool
+  - `is_server_updated`: bool
+- **Conversation** (CamelCaseModel)
+  - `timestamp`: datetime
+  - `network_id`: str
+  - `type`: str
+  - `conversation_id`: str
+  - `voice_id`: str
+  - `participants`: List[str]
+  - `read_horizon`: str
+  - `delete_horizon`: str
+  - `is_read`: bool
+  - `muted`: bool
+  - `folder`: str
+  - `last_message`: Message
+- **Primary** (CamelCaseModel)
+  - `folder`: str
+  - `total_count`: int
+  - `unread_count`: int
+  - `conversations`: List[Conversation]
+- **SafetySettings** (CamelCaseModel)
+  - `version`: int
+  - `primary_inbox_media`: str
+  - `primary_inbox_text`: str
+  - `primary_inbox_url`: str
+  - `secondary_inbox_media`: str
+  - `secondary_inbox_text`: str
+  - `secondary_inbox_url`: str
+  - `can_unobscure`: bool
+- **InboxResponse** (CamelCaseModel)
+  - `primary`: Primary
+  - `folders`: List[Any]
+  - `safety_settings`: SafetySettings
+- **ConversationResponse** (CamelCaseModel)
+  - `timestamp`: datetime
+  - `network_id`: str
+  - `type`: str
+  - `conversation_id`: str
+  - `participants`: Optional[List[str]]
+  - `read_horizon`: str
+  - `delete_horizon`: str
+  - `is_read`: bool
+  - `muted`: bool
+  - `folder`: str
+  - `messages`: Optional[List[Message]]
+  - `continuation_token`: Optional[str]
+  - `voice_id`: str
+  - `voice_roster`: Optional[List[Any]]
+- **SendMessageResponse** (CamelCaseModel)
+  - `message_id`: str
+  - `conversation_id`: str
+
+### xbox/webapi/api/provider/people/models.py
+- **PeopleDecoration** (str, Enum)
+  - No annotated attributes
+- **PeopleSummaryResponse** (CamelCaseModel)
+  - `target_following_count`: int
+  - `target_follower_count`: int
+  - `is_caller_following_target`: bool
+  - `is_target_following_caller`: bool
+  - `has_caller_marked_target_as_favorite`: bool
+  - `has_caller_marked_target_as_identity_shared`: bool
+  - `legacy_friend_status`: str
+  - `available_people_slots`: Optional[int]
+  - `recent_change_count`: Optional[int]
+  - `watermark`: Optional[str]
+- **Suggestion** (PascalCaseModel)
+  - `type`: Optional[str]
+  - `priority`: int
+  - `reasons`: Optional[str]
+  - `title_id`: Optional[str]
+- **Recommendation** (PascalCaseModel)
+  - `type`: str
+  - `reasons`: List[str]
+- **MultiplayerSummary** (PascalCaseModel)
+  - `in_multiplayer_session`: int
+  - `in_party`: int
+- **RecentPlayer** (CamelCaseModel)
+  - `titles`: List[str]
+  - `text`: Optional[str]
+- **Follower** (CamelCaseModel)
+  - `text`: Optional[str]
+  - `followed_date_time`: Optional[datetime]
+- **PreferredColor** (CamelCaseModel)
+  - `primary_color`: Optional[str]
+  - `secondary_color`: Optional[str]
+  - `tertiary_color`: Optional[str]
+- **PresenceDetail** (PascalCaseModel)
+  - `is_broadcasting`: bool
+  - `device`: str
+  - `presence_text`: str
+  - `state`: str
+  - `title_id`: str
+  - `title_type`: Optional[str]
+  - `is_primary`: bool
+  - `is_game`: bool
+  - `rich_presence_text`: Optional[str]
+- **TitlePresence** (PascalCaseModel)
+  - `is_currently_playing`: bool
+  - `presence_text`: Optional[str]
+  - `title_name`: Optional[str]
+  - `title_id`: Optional[str]
+- **Detail** (CamelCaseModel)
+  - `account_tier`: str
+  - `bio`: Optional[str]
+  - `is_verified`: bool
+  - `location`: Optional[str]
+  - `tenure`: Optional[str]
+  - `watermarks`: List[str]
+  - `blocked`: bool
+  - `mute`: bool
+  - `follower_count`: int
+  - `following_count`: int
+  - `has_game_pass`: bool
+- **SocialManager** (CamelCaseModel)
+  - `title_ids`: List[str]
+  - `pages`: List[str]
+- **Avatar** (CamelCaseModel)
+  - `update_time_offset`: Optional[datetime]
+  - `spritesheet_metadata`: Optional[Any]
+- **LinkedAccount** (CamelCaseModel)
+  - `network_name`: str
+  - `display_name`: Optional[str]
+  - `show_on_profile`: bool
+  - `is_family_friendly`: bool
+  - `deeplink`: Optional[str]
+- **Person** (CamelCaseModel)
+  - `xuid`: str
+  - `is_favorite`: bool
+  - `is_following_caller`: bool
+  - `is_followed_by_caller`: bool
+  - `is_identity_shared`: bool
+  - `added_date_time_utc`: Optional[datetime]
+  - `display_name`: Optional[str]
+  - `real_name`: str
+  - `display_pic_raw`: str
+  - `show_user_as_avatar`: str
+  - `gamertag`: str
+  - `gamer_score`: str
+  - `modern_gamertag`: str
+  - `modern_gamertag_suffix`: str
+  - `unique_modern_gamertag`: str
+  - `xbox_one_rep`: str
+  - `presence_state`: str
+  - `presence_text`: str
+  - `presence_devices`: Optional[Any]
+  - `is_broadcasting`: bool
+  - `is_cloaked`: Optional[bool]
+  - `is_quarantined`: bool
+  - `is_xbox_360_gamerpic`: bool
+  - `last_seen_date_time_utc`: Optional[datetime]
+  - `suggestion`: Optional[Suggestion]
+  - `recommendation`: Optional[Recommendation]
+  - `search`: Optional[Any]
+  - `titleHistory`: Optional[Any]
+  - `multiplayer_summary`: Optional[MultiplayerSummary]
+  - `recent_player`: Optional[RecentPlayer]
+  - `follower`: Optional[Follower]
+  - `preferred_color`: Optional[PreferredColor]
+  - `presence_details`: Optional[List[PresenceDetail]]
+  - `title_presence`: Optional[TitlePresence]
+  - `title_summaries`: Optional[Any]
+  - `presence_title_ids`: Optional[List[str]]
+  - `detail`: Optional[Detail]
+  - `community_manager_titles`: Optional[Any]
+  - `social_manager`: Optional[SocialManager]
+  - `broadcast`: Optional[List[Any]]
+  - `tournament_summary`: Optional[Any]
+  - `avatar`: Optional[Avatar]
+  - `linked_accounts`: Optional[List[LinkedAccount]]
+  - `color_theme`: str
+  - `preferred_flag`: str
+  - `preferred_platforms`: List[Any]
+- **RecommendationSummary** (CamelCaseModel)
+  - `friend_of_friend`: int
+  - `facebook_friend`: int
+  - `phone_contact`: int
+  - `follower`: int
+  - `VIP`: int
+  - `steam_friend`: int
+  - `promote_suggestions`: bool
+- **FriendFinderState** (CamelCaseModel)
+  - `facebook_opt_in_status`: str
+  - `facebook_token_status`: str
+  - `phone_opt_in_status`: str
+  - `phone_token_status`: str
+  - `steam_opt_in_status`: str
+  - `steam_token_status`: str
+  - `discord_opt_in_status`: str
+  - `discord_token_status`: str
+  - `instagram_opt_in_status`: str
+  - `instagram_token_status`: str
+  - `mixer_opt_in_status`: str
+  - `mixer_token_status`: str
+  - `reddit_opt_in_status`: str
+  - `reddit_token_status`: str
+  - `twitch_opt_in_status`: str
+  - `twitch_token_status`: str
+  - `twitter_opt_in_status`: str
+  - `twitter_token_status`: str
+  - `you_tube_opt_in_status`: str
+  - `you_tube_token_status`: str
+- **PeopleResponse** (CamelCaseModel)
+  - `people`: List[Person]
+  - `recommendation_summary`: Optional[RecommendationSummary]
+  - `friend_finder_state`: Optional[FriendFinderState]
+  - `account_link_details`: Optional[List[LinkedAccount]]
+
+### xbox/webapi/api/provider/presence/models.py
+- **PresenceLevel** (str, Enum)
+  - No annotated attributes
+- **PresenceState** (str, Enum)
+  - No annotated attributes
+- **LastSeen** (CamelCaseModel)
+  - `device_type`: str
+  - `title_id`: Optional[str]
+  - `title_name`: str
+  - `timestamp`: str
+- **ActivityRecord** (CamelCaseModel)
+  - `richPresence`: Optional[str]
+  - `media`: Optional[str]
+- **TitleRecord** (CamelCaseModel)
+  - `id`: Optional[str]
+  - `name`: Optional[str]
+  - `activity`: Optional[List[ActivityRecord]]
+  - `lastModified`: Optional[str]
+  - `placement`: Optional[str]
+  - `state`: Optional[str]
+- **DeviceRecord** (CamelCaseModel)
+  - `titles`: Optional[List[TitleRecord]]
+  - `type`: Optional[str]
+- **PresenceItem** (CamelCaseModel)
+  - `xuid`: str
+  - `state`: str
+  - `last_seen`: Optional[LastSeen]
+  - `devices`: Optional[List[DeviceRecord]]
+- **PresenceBatchResponse** (RootModel[List[PresenceItem]], CamelCaseModel)
+  - `root`: List[PresenceItem]
+
+### xbox/webapi/api/provider/profile/models.py
+- **ProfileSettings** (str, Enum)
+  - No annotated attributes
+- **Setting** (CamelCaseModel)
+  - `id`: str
+  - `value`: str
+- **ProfileUser** (CamelCaseModel)
+  - `id`: str
+  - `host_id`: str
+  - `settings`: List[Setting]
+  - `is_sponsored_user`: bool
+- **ProfileResponse** (CamelCaseModel)
+  - `profile_users`: List[ProfileUser]
+
+### xbox/webapi/api/provider/screenshots/models.py
+- **Thumbnail** (CamelCaseModel)
+  - `uri`: str
+  - `file_size`: int
+  - `thumbnail_type`: str
+- **ScreenshotUri** (CamelCaseModel)
+  - `uri`: str
+  - `file_size`: int
+  - `uri_type`: str
+  - `expiration`: datetime
+- **Screenshot** (CamelCaseModel)
+  - `screenshot_id`: str
+  - `resolution_height`: int
+  - `resolution_width`: int
+  - `state`: str
+  - `date_published`: datetime
+  - `date_taken`: datetime
+  - `last_modified`: datetime
+  - `user_caption`: str
+  - `type`: str
+  - `scid`: str
+  - `title_id`: int
+  - `rating`: float
+  - `rating_count`: int
+  - `views`: int
+  - `title_data`: str
+  - `system_properties`: str
+  - `saved_by_user`: bool
+  - `achievement_id`: str
+  - `greatest_moment_id`: Any
+  - `thumbnails`: List[Thumbnail]
+  - `screenshot_uris`: List[ScreenshotUri]
+  - `xuid`: str
+  - `screenshot_name`: str
+  - `title_name`: str
+  - `screenshot_locale`: str
+  - `screenshot_content_attributes`: str
+  - `device_type`: str
+- **PagingInfo** (CamelCaseModel)
+  - `continuation_token`: Optional[str]
+- **ScreenshotResponse** (CamelCaseModel)
+  - `screenshots`: List[Screenshot]
+  - `paging_info`: PagingInfo
+
+### xbox/webapi/api/provider/smartglass/models.py
+- **ConsoleType** (str, Enum)
+  - No annotated attributes
+- **PowerState** (str, Enum)
+  - No annotated attributes
+- **PlaybackState** (str, Enum)
+  - No annotated attributes
+- **ErrorCode** (str, Enum)
+  - No annotated attributes
+- **OpStatus** (str, Enum)
+  - No annotated attributes
+- **SmartglassApiStatus** (CamelCaseModel)
+  - `error_code`: str
+  - `error_message`: Optional[str]
+- **StorageDevice** (CamelCaseModel)
+  - `storage_device_id`: str
+  - `storage_device_name`: str
+  - `is_default`: bool
+  - `total_space_bytes`: float
+  - `free_space_bytes`: float
+- **SmartglassConsole** (CamelCaseModel)
+  - `id`: str
+  - `name`: str
+  - `console_type`: ConsoleType
+  - `power_state`: PowerState
+  - `console_streaming_enabled`: bool
+  - `digital_assistant_remote_control_enabled`: bool
+  - `remote_management_enabled`: bool
+  - `storage_devices`: Optional[List[StorageDevice]]
+- **SmartglassConsoleList** (CamelCaseModel)
+  - `agent_user_id`: Optional[str]
+  - `result`: List[SmartglassConsole]
+  - `status`: SmartglassApiStatus
+- **SmartglassConsoleStatus** (CamelCaseModel)
+  - `power_state`: PowerState
+  - `console_streaming_enabled`: bool
+  - `digital_assistant_remote_control_enabled`: bool
+  - `remote_management_enabled`: bool
+  - `focus_app_aumid`: str
+  - `is_tv_configured`: bool
+  - `login_state`: Optional[str]
+  - `playback_state`: PlaybackState
+  - `power_state`: PowerState
+  - `storage_devices`: Optional[List[StorageDevice]]
+  - `status`: SmartglassApiStatus
+- **InstalledPackage** (CamelCaseModel)
+  - `one_store_product_id`: Optional[str]
+  - `title_id`: int
+  - `aumid`: Optional[str]
+  - `last_active_time`: Optional[datetime]
+  - `is_game`: bool
+  - `name`: Optional[str]
+  - `content_type`: str
+  - `instance_id`: str
+  - `storage_device_id`: str
+  - `unique_id`: str
+  - `legacy_product_id`: Optional[str]
+  - `version`: int
+  - `size_in_bytes`: int
+  - `install_time`: datetime
+  - `update_time`: Optional[datetime]
+  - `parent_id`: Optional[str]
+- **InstalledPackagesList** (CamelCaseModel)
+  - `result`: List[InstalledPackage]
+  - `status`: SmartglassApiStatus
+  - `agent_user_id`: Optional[str]
+- **StorageDevicesList** (CamelCaseModel)
+  - `device_id`: str
+  - `result`: List[StorageDevice]
+  - `status`: SmartglassApiStatus
+- **OpStatusNode** (CamelCaseModel)
+  - `operation_status`: OpStatus
+  - `op_id`: str
+  - `originating_session_id`: str
+  - `command`: str
+  - `succeeded`: bool
+  - `console_status_code`: Optional[int]
+  - `xccs_error_code`: Optional[ErrorCode]
+  - `h_result`: Optional[int]
+  - `message`: Optional[str]
+- **OperationStatusResponse** (CamelCaseModel)
+  - `op_status_list`: List[OpStatusNode]
+  - `status`: SmartglassApiStatus
+- **CommandDestination** (CamelCaseModel)
+  - `id`: str
+  - `name`: str
+  - `power_state`: PowerState
+  - `remote_management_enabled`: bool
+  - `console_streaming_enabled`: bool
+  - `console_type`: ConsoleType
+  - `wireless_warning`: Optional[str]
+  - `out_of_home_warning`: Optional[str]
+- **CommandResponse** (CamelCaseModel)
+  - `result`: Optional[str]
+  - `ui_text`: Optional[str]
+  - `destination`: CommandDestination
+  - `user_info`: Optional[str]
+  - `op_id`: str
+  - `status`: SmartglassApiStatus
+- **VolumeDirection** (str, Enum)
+  - No annotated attributes
+- **InputKeyType** (str, Enum)
+  - No annotated attributes
+- **GuideTab** (str, Enum)
+  - No annotated attributes
+
+### xbox/webapi/api/provider/titlehub/models.py
+- **TitleFields** (str, Enum)
+  - No annotated attributes
+- **Achievement** (CamelCaseModel)
+  - `current_achievements`: int
+  - `total_achievements`: int
+  - `current_gamerscore`: int
+  - `total_gamerscore`: int
+  - `progress_percentage`: float
+  - `source_version`: int
+- **Stats** (CamelCaseModel)
+  - `source_version`: int
+- **GamePass** (CamelCaseModel)
+  - `is_game_pass`: bool
+- **Image** (CamelCaseModel)
+  - `url`: str
+  - `type`: str
+- **TitleHistory** (CamelCaseModel)
+  - `last_time_played`: datetime
+  - `visible`: bool
+  - `can_hide`: bool
+- **Attribute** (CamelCaseModel)
+  - `applicable_platforms`: Optional[List[str]]
+  - `maximum`: Optional[int]
+  - `minimum`: Optional[int]
+  - `name`: str
+- **Availability** (PascalCaseModel)
+  - `actions`: List[str]
+  - `availability_id`: str
+  - `platforms`: List[str]
+  - `sku_id`: str
+- **Detail** (CamelCaseModel)
+  - `attributes`: List[Attribute]
+  - `availabilities`: List[Availability]
+  - `capabilities`: List[str]
+  - `description`: str
+  - `developer_name`: str
+  - `genres`: Optional[List[str]]
+  - `publisher_name`: str
+  - `min_age`: Optional[int]
+  - `release_date`: Optional[datetime]
+  - `short_description`: Optional[str]
+  - `vui_display_name`: Optional[str]
+  - `xbox_live_gold_required`: bool
+- **Title** (CamelCaseModel)
+  - `title_id`: str
+  - `pfn`: Optional[str]
+  - `bing_id`: Optional[str]
+  - `service_config_id`: Optional[str]
+  - `windows_phone_product_id`: Optional[str]
+  - `name`: str
+  - `type`: str
+  - `devices`: List[str]
+  - `display_image`: str
+  - `media_item_type`: str
+  - `modern_title_id`: Optional[str]
+  - `is_bundle`: bool
+  - `achievement`: Optional[Achievement]
+  - `stats`: Optional[Stats]
+  - `game_pass`: Optional[GamePass]
+  - `images`: Optional[List[Image]]
+  - `title_history`: Optional[TitleHistory]
+  - `detail`: Optional[Detail]
+  - `friends_who_played`: Any
+  - `alternate_title_ids`: Any
+  - `content_boards`: Any
+  - `xbox_live_tier`: Optional[str]
+  - `is_streamable`: Optional[bool]
+- **TitleHubResponse** (CamelCaseModel)
+  - `xuid`: Optional[str]
+  - `titles`: List[Title]
+
+### xbox/webapi/api/provider/usersearch/models.py
+- **UserDetail** (CamelCaseModel)
+  - `id`: str
+  - `gamertag`: str
+  - `display_pic_uri`: str
+  - `score`: float
+- **UserResult** (CamelCaseModel)
+  - `text`: str
+  - `result`: UserDetail
+- **UserSearchResponse** (CamelCaseModel)
+  - `results`: List[UserResult]
+
+### xbox/webapi/api/provider/userstats/models.py
+- **GeneralStatsField** (object)
+  - No annotated attributes
+- **GroupProperties** (PascalCaseModel)
+  - `ordinal`: Optional[str]
+  - `sort_order`: Optional[str]
+  - `display_name`: Optional[str]
+  - `display_format`: Optional[str]
+  - `display_semantic`: Optional[str]
+- **Properties** (PascalCaseModel)
+  - `display_name`: Optional[str]
+- **Stat** (LowerCaseModel)
+  - `group_properties`: Optional[GroupProperties]
+  - `xuid`: str
+  - `scid`: str
+  - `name`: str
+  - `type`: str
+  - `value`: str
+  - `properties`: Properties
+- **StatListsCollectionItem** (LowerCaseModel)
+  - `arrange_by_field`: str
+  - `arrange_by_field_id`: str
+  - `stats`: List[Stat]
+- **Group** (LowerCaseModel)
+  - `name`: str
+  - `title_id`: Optional[str]
+  - `statlistscollection`: List[StatListsCollectionItem]
+- **UserStatsResponse** (LowerCaseModel)
+  - `groups`: Optional[List[Group]]
+  - `statlistscollection`: List[StatListsCollectionItem]
+
+### xbox/webapi/authentication/models.py
+- **XTokenResponse** (PascalCaseModel)
+  - `issue_instant`: datetime
+  - `not_after`: datetime
+  - `token`: str
+- **XADDisplayClaims** (BaseModel)
+  - `xdi`: Dict[str, str]
+- **XADResponse** (XTokenResponse)
+  - `display_claims`: XADDisplayClaims
+- **XATDisplayClaims** (BaseModel)
+  - `xti`: Dict[str, str]
+- **XATResponse** (XTokenResponse)
+  - `display_claims`: XATDisplayClaims
+- **XAUDisplayClaims** (BaseModel)
+  - `xui`: List[Dict[str, str]]
+- **XAUResponse** (XTokenResponse)
+  - `display_claims`: XAUDisplayClaims
+- **XSTSDisplayClaims** (BaseModel)
+  - `xui`: List[Dict[str, str]]
+- **XSTSResponse** (XTokenResponse)
+  - `display_claims`: XSTSDisplayClaims
+- **OAuth2TokenResponse** (BaseModel)
+  - `token_type`: str
+  - `expires_in`: int
+  - `scope`: str
+  - `access_token`: str
+  - `refresh_token`: Optional[str]
+  - `user_id`: str
+  - `issued`: datetime
+- **XalAppParameters** (object)
+  - `app_id`: str
+  - `title_id`: str
+  - `redirect_uri`: str
+- **XalClientParameters** (object)
+  - `user_agent`: str
+  - `device_type`: str
+  - `client_version`: str
+  - `query_display`: str
+- **SisuAuthenticationResponse** (PascalCaseModel)
+  - `msa_oauth_redirect`: str
+  - `msa_request_parameters`: Dict[str, str]
+- **SisuAuthorizationResponse** (PascalCaseModel)
+  - `device_token`: str
+  - `title_token`: XATResponse
+  - `user_token`: XAUResponse
+  - `authorization_token`: XSTSResponse
+  - `web_page`: str
+  - `sandbox`: str
+  - `use_modern_gamertag`: Optional[bool]
+- **TitleEndpoint** (PascalCaseModel)
+  - `protocol`: str
+  - `host`: str
+  - `host_type`: str
+  - `path`: Optional[str]
+  - `relying_party`: Optional[str]
+  - `sub_relying_party`: Optional[str]
+  - `token_type`: Optional[str]
+  - `signature_policy_index`: Optional[int]
+  - `server_cert_index`: Optional[List[int]]
+- **SignaturePolicy** (PascalCaseModel)
+  - `version`: int
+  - `supported_algorithms`: List[str]
+  - `max_body_bytes`: int
+- **TitleEndpointCertificate** (PascalCaseModel)
+  - `thumbprint`: str
+  - `is_issuer`: Optional[bool]
+  - `root_cert_index`: int
+- **TitleEndpointsResponse** (PascalCaseModel)
+  - `end_points`: List[TitleEndpoint]
+  - `signature_policies`: List[SignaturePolicy]
+  - `certs`: List[TitleEndpointCertificate]
+  - `root_certs`: List[str]
+
+### xbox/webapi/common/models.py
+- **PascalCaseModel** (BaseModel)
+  - No annotated attributes
+- **CamelCaseModel** (BaseModel)
+  - No annotated attributes
+- **LowerCaseModel** (BaseModel)
+  - No annotated attributes
+
+### xbox/webapi/common/ratelimits/models.py
+- **TimePeriod** (Enum)
+  - No annotated attributes
+- **LimitType** (Enum)
+  - No annotated attributes
+- **IncrementResult** (BaseModel)
+  - `counter`: int
+  - `exceeded`: bool
+- **ParsedRateLimit** (BaseModel)
+  - `read`: int
+  - `write`: int
+  - `period`: TimePeriod
