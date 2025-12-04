@@ -16,6 +16,7 @@ Welcome to Xbox WebAPI's documentation!
    source/xbox.webapi.api.client
    source/xbox.webapi.api.language
    source/xbox.webapi.api.provider
+   source/compendium
 
 
 Indices and tables
